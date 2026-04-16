@@ -9,6 +9,9 @@ import asyncio
 import os
 import sys
 import subprocess
+import threading
+import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Union
 import tempfile
@@ -26,6 +29,14 @@ logger = logging.getLogger(__name__)
 MATLAB_PATH = os.getenv('MATLAB_PATH', 'C:/Program Files/MATLAB/R2025a')
 
 import re
+
+# Try to import matlab.engine.TimeoutError for FutureResult timeout handling.
+# Falls back to Python's built-in TimeoutError if matlab.engine isn't installed.
+try:
+    import matlab.engine
+    _MatlabTimeoutError = matlab.engine.TimeoutError
+except (ImportError, AttributeError):
+    _MatlabTimeoutError = TimeoutError
 
 def _sanitize_matlab_identifier(name: str) -> str:
     """Sanitize a string to be a valid MATLAB identifier/path component.
@@ -46,6 +57,9 @@ def _sanitize_matlab_identifier(name: str) -> str:
         raise ValueError(f"Identifier must not contain single quotes: {name!r}")
     return name
 
+# Default timeout for MATLAB engine calls (seconds). 0 = no timeout.
+DEFAULT_MATLAB_TIMEOUT = int(os.getenv("MATLAB_TIMEOUT", "30"))
+
 class MATLABEngineManager:
     """Manages shared MATLAB engine connection with error handling and reconnection."""
     
@@ -54,6 +68,12 @@ class MATLABEngineManager:
         self.shared_engine_name = "SimulinkMCP"  # Use the specific engine name you defined
         self.is_connected = False
         self.matlab_available = False
+        # Async task tracking
+        self._active_future = None  # (task_id, future, code_snippet, start_time)
+        self._future_lock = threading.Lock()
+        self._completed_tasks: Dict[str, Dict] = {}  # task_id -> result
+        # Performance monitoring
+        self._perf_log: List[Dict] = []  # recent execution timings
         
     def ensure_matlab_engine_installed(self):
         """Ensure MATLAB Engine for Python is installed."""
@@ -122,23 +142,55 @@ class MATLABEngineManager:
                 self.engine = None
                 self.is_connected = False
     
-    def execute_matlab_code(self, code: str, capture_output: bool = True) -> Dict[str, Any]:
-        """Execute MATLAB code and return results."""
+    def execute_matlab_code(self, code: str, capture_output: bool = True,
+                            timeout: Optional[int] = None) -> Dict[str, Any]:
+        """Execute MATLAB code and return results.
+        
+        Args:
+            code: MATLAB code to execute
+            capture_output: Whether to capture and return output
+            timeout: Seconds to wait before cancelling. None = DEFAULT_MATLAB_TIMEOUT, 0 = no timeout.
+        """
+        if timeout is None:
+            timeout = DEFAULT_MATLAB_TIMEOUT
+        
         result = {
             "success": False,
             "output": "",
             "error": "",
             "figures": [],
-            "workspace_vars": {}
+            "workspace_vars": {},
+            "elapsed_ms": 0
         }
         
+        start_time = time.monotonic()
+        code_preview = code.strip()[:80].replace('\n', ' ')
+        
         if self.matlab_available and self.is_connected and self.engine:
-            # Use MATLAB Engine
+            # Use MATLAB Engine with timeout via background=True + FutureResult
             try:
                 # IMPORTANT: MCP uses stdout for protocol messages.
-                # MATLAB Engine can print to stdout when using eval/feval.
                 # Use evalc to capture any command-window output as a string.
-                output = self.engine.evalc(code)
+                if timeout > 0:
+                    # Use background=True so we can enforce a timeout
+                    future = self.engine.evalc(code, nargout=1, background=True)
+                    try:
+                        output = future.result(timeout=float(timeout))
+                    except (TimeoutError, _MatlabTimeoutError):
+                        future.cancel()
+                        elapsed = (time.monotonic() - start_time) * 1000
+                        result["error"] = (
+                            f"MATLAB execution timed out after {timeout}s. "
+                            f"Code: {code_preview}..."
+                        )
+                        result["elapsed_ms"] = round(elapsed)
+                        self._log_perf(code_preview, elapsed, timed_out=True)
+                        logger.warning(f"Timeout ({timeout}s): {code_preview}")
+                        return result
+                else:
+                    # No timeout — blocking call
+                    output = self.engine.evalc(code)
+                
                 if capture_output:
                     result["output"] = (output or "").strip()
                 result["success"] = True
@@ -156,11 +208,12 @@ class MATLABEngineManager:
                 matlab_exe = os.path.join(MATLAB_PATH, 'bin', 'matlab.exe')
                 cmd = [matlab_exe, '-batch', f"run('{script_path.replace(os.sep, '/')}'); exit;"]
                 
+                cli_timeout = timeout if timeout > 0 else 60
                 process = subprocess.run(
                     cmd,
                     capture_output=True,
                     text=True,
-                    timeout=60
+                    timeout=cli_timeout
                 )
                 
                 result["output"] = process.stdout
@@ -172,11 +225,134 @@ class MATLABEngineManager:
                 os.unlink(script_path)
                 
             except subprocess.TimeoutExpired:
-                result["error"] = "MATLAB execution timed out"
+                result["error"] = f"MATLAB execution timed out after {cli_timeout}s"
             except Exception as e:
                 result["error"] = str(e)
         
+        elapsed = (time.monotonic() - start_time) * 1000
+        result["elapsed_ms"] = round(elapsed)
+        self._log_perf(code_preview, elapsed, timed_out=False)
+        
+        if elapsed > 5000:
+            logger.warning(f"Slow MATLAB call ({elapsed:.0f}ms): {code_preview}")
+        
         return result
+    
+    def execute_matlab_code_async(self, code: str) -> str:
+        """Start async MATLAB execution, return a task_id for polling.
+        
+        The MATLAB engine is single-threaded, so only one async task
+        can run at a time. Returns immediately with a task_id.
+        """
+        if not self.engine or not self.is_connected:
+            raise RuntimeError("MATLAB engine not connected")
+        
+        with self._future_lock:
+            if self._active_future is not None:
+                _, existing_future, _, _ = self._active_future
+                if not existing_future.done():
+                    raise RuntimeError(
+                        "Another async task is already running. "
+                        "Cancel it first or wait for completion."
+                    )
+        
+        task_id = str(uuid.uuid4())
+        future = self.engine.evalc(code, nargout=1, background=True)
+        code_preview = code.strip()[:80].replace('\n', ' ')
+        
+        with self._future_lock:
+            self._active_future = (task_id, future, code_preview, time.monotonic())
+        
+        logger.info(f"Async task started: {task_id} — {code_preview}")
+        return task_id
+    
+    def check_task(self, task_id: str) -> Dict[str, Any]:
+        """Poll async task status. Returns dict with status/output/error."""
+        # Check completed tasks cache first
+        if task_id in self._completed_tasks:
+            return self._completed_tasks[task_id]
+        
+        with self._future_lock:
+            if self._active_future and self._active_future[0] == task_id:
+                _, future, code_preview, start_time = self._active_future
+                elapsed = (time.monotonic() - start_time) * 1000
+                
+                if future.done():
+                    try:
+                        output = future.result()
+                        result = {
+                            "status": "completed",
+                            "output": (output or "").strip(),
+                            "elapsed_ms": round(elapsed)
+                        }
+                    except Exception as e:
+                        result = {
+                            "status": "failed",
+                            "error": str(e),
+                            "elapsed_ms": round(elapsed)
+                        }
+                    self._completed_tasks[task_id] = result
+                    self._active_future = None
+                    self._log_perf(code_preview, elapsed, timed_out=False)
+                    return result
+                else:
+                    return {
+                        "status": "working",
+                        "elapsed_ms": round(elapsed),
+                        "code_preview": code_preview
+                    }
+        
+        return {"status": "not_found", "error": f"Task {task_id} not found"}
+    
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a running async task."""
+        with self._future_lock:
+            if self._active_future and self._active_future[0] == task_id:
+                _, future, code_preview, start_time = self._active_future
+                cancelled = future.cancel()
+                if cancelled:
+                    elapsed = (time.monotonic() - start_time) * 1000
+                    self._completed_tasks[task_id] = {
+                        "status": "cancelled",
+                        "elapsed_ms": round(elapsed)
+                    }
+                    self._active_future = None
+                    logger.info(f"Cancelled task {task_id}: {code_preview}")
+                return cancelled
+        return False
+    
+    def _log_perf(self, code_preview: str, elapsed_ms: float, timed_out: bool):
+        """Log performance data for a MATLAB execution."""
+        entry = {
+            "timestamp": time.time(),
+            "code": code_preview,
+            "elapsed_ms": round(elapsed_ms),
+            "timed_out": timed_out
+        }
+        self._perf_log.append(entry)
+        # Keep last 100 entries
+        if len(self._perf_log) > 100:
+            self._perf_log = self._perf_log[-100:]
+        logger.debug(f"MATLAB perf: {elapsed_ms:.0f}ms {'TIMEOUT' if timed_out else 'OK'} — {code_preview}")
+    
+    def get_perf_summary(self) -> Dict[str, Any]:
+        """Return performance summary of recent MATLAB executions."""
+        if not self._perf_log:
+            return {"total_calls": 0}
+        
+        times = [e["elapsed_ms"] for e in self._perf_log]
+        timeouts = sum(1 for e in self._perf_log if e["timed_out"])
+        slow = [e for e in self._perf_log if e["elapsed_ms"] > 5000]
+        
+        return {
+            "total_calls": len(self._perf_log),
+            "avg_ms": round(sum(times) / len(times)),
+            "max_ms": max(times),
+            "min_ms": min(times),
+            "timeouts": timeouts,
+            "slow_calls_gt5s": len(slow),
+            "slow_details": [{"code": e["code"], "ms": e["elapsed_ms"]} for e in slow[-5:]]
+        }
 
 # Global engine manager
 engine_manager = MATLABEngineManager()
@@ -889,16 +1065,21 @@ def simulink_model_is_dirty(model_name: str) -> str:
 # General MATLAB Code Execution Functions
 # ========================================
 
-def matlab_execute_code(code: str, capture_output: bool = True) -> Dict[str, Any]:
+def matlab_execute_code(code: str, capture_output: bool = True,
+                        timeout: Optional[int] = None) -> Dict[str, Any]:
     """Execute arbitrary MATLAB code and return results.
     
     Args:
         code: MATLAB code string to execute
         capture_output: Whether to capture and return output
+        timeout: Seconds to wait. None=default (30s), 0=no timeout.
         
     Returns:
-        Dictionary with status, output, and error fields
+        Dictionary with status, output, error, and elapsed_ms fields
     """
+    if timeout is None:
+        timeout = DEFAULT_MATLAB_TIMEOUT
+    
     try:
         if not engine_manager.engine or not engine_manager.is_connected:
             return {
@@ -906,31 +1087,74 @@ def matlab_execute_code(code: str, capture_output: bool = True) -> Dict[str, Any
                 "error": "MATLAB engine not connected"
             }
         
-        # Use evalc to capture output
+        code_preview = code.strip()[:80].replace('\n', ' ')
+        start_time = time.monotonic()
+        
         if capture_output:
             try:
-                output = engine_manager.engine.evalc(code, nargout=1)
+                if timeout > 0:
+                    future = engine_manager.engine.evalc(code, nargout=1, background=True)
+                    try:
+                        output = future.result(timeout=float(timeout))
+                    except (TimeoutError, _MatlabTimeoutError):
+                        future.cancel()
+                        elapsed = (time.monotonic() - start_time) * 1000
+                        engine_manager._log_perf(code_preview, elapsed, timed_out=True)
+                        return {
+                            "status": "error",
+                            "error": f"MATLAB execution timed out after {timeout}s. Code: {code_preview}...",
+                            "elapsed_ms": round(elapsed)
+                        }
+                else:
+                    output = engine_manager.engine.evalc(code, nargout=1)
+                
+                elapsed = (time.monotonic() - start_time) * 1000
+                engine_manager._log_perf(code_preview, elapsed, timed_out=False)
                 return {
                     "status": "success",
-                    "output": str(output)
+                    "output": str(output),
+                    "elapsed_ms": round(elapsed)
                 }
             except Exception as e:
+                elapsed = (time.monotonic() - start_time) * 1000
+                engine_manager._log_perf(code_preview, elapsed, timed_out=False)
                 return {
                     "status": "error",
-                    "error": str(e)
+                    "error": str(e),
+                    "elapsed_ms": round(elapsed)
                 }
         else:
-            # Just execute without capturing output
             try:
-                engine_manager.engine.eval(code, nargout=0)
+                if timeout > 0:
+                    future = engine_manager.engine.eval(code, nargout=0, background=True)
+                    try:
+                        future.result(timeout=float(timeout))
+                    except (TimeoutError, _MatlabTimeoutError):
+                        future.cancel()
+                        elapsed = (time.monotonic() - start_time) * 1000
+                        engine_manager._log_perf(code_preview, elapsed, timed_out=True)
+                        return {
+                            "status": "error",
+                            "error": f"MATLAB execution timed out after {timeout}s",
+                            "elapsed_ms": round(elapsed)
+                        }
+                else:
+                    engine_manager.engine.eval(code, nargout=0)
+                
+                elapsed = (time.monotonic() - start_time) * 1000
+                engine_manager._log_perf(code_preview, elapsed, timed_out=False)
                 return {
                     "status": "success",
-                    "output": "Code executed successfully"
+                    "output": "Code executed successfully",
+                    "elapsed_ms": round(elapsed)
                 }
             except Exception as e:
+                elapsed = (time.monotonic() - start_time) * 1000
+                engine_manager._log_perf(code_preview, elapsed, timed_out=False)
                 return {
                     "status": "error",
-                    "error": str(e)
+                    "error": str(e),
+                    "elapsed_ms": round(elapsed)
                 }
     except Exception as e:
         return {

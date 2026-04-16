@@ -590,7 +590,7 @@ async def handle_list_tools() -> list[Tool]:
         # ============================================================
         Tool(
             name="matlab_execute_code",
-            description="Execute arbitrary MATLAB code and return output. Supports multi-line code blocks. Use for analysis, plotting, data processing.",
+            description="Execute arbitrary MATLAB code and return output. Supports multi-line code blocks. Use for analysis, plotting, data processing. Returns elapsed_ms for performance monitoring.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -601,6 +601,10 @@ async def handle_list_tools() -> list[Tool]:
                     "capture_output": {
                         "type": "boolean",
                         "description": "Whether to capture and return output (default: true)"
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Timeout in seconds. 0=no timeout. Default: MATLAB_TIMEOUT env var or 30s. Use higher values for SSH/network/simulation commands."
                     }
                 },
                 "required": ["code"]
@@ -746,6 +750,60 @@ async def handle_list_tools() -> list[Tool]:
         Tool(
             name="matlab_detect_toolboxes",
             description="Returns information about installed MATLAB and toolboxes, including version numbers",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        # ============================================================
+        # Async execution & performance monitoring
+        # ============================================================
+        Tool(
+            name="matlab_execute_async",
+            description="Start a long-running MATLAB command asynchronously. Returns a task_id immediately. Use matlab_check_task to poll for completion. Only one async task can run at a time (MATLAB engine is single-threaded). Use for: simulations, builds, SSH operations, long computations.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "MATLAB code to execute asynchronously"
+                    }
+                },
+                "required": ["code"]
+            }
+        ),
+        Tool(
+            name="matlab_check_task",
+            description="Check status of an async MATLAB task. Returns status: 'working', 'completed', 'failed', 'cancelled', or 'not_found'. When completed, includes output and elapsed_ms.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "Task ID returned by matlab_execute_async"
+                    }
+                },
+                "required": ["task_id"]
+            }
+        ),
+        Tool(
+            name="matlab_cancel_task",
+            description="Cancel a running async MATLAB task.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "Task ID to cancel"
+                    }
+                },
+                "required": ["task_id"]
+            }
+        ),
+        Tool(
+            name="matlab_perf_summary",
+            description="Get performance summary of recent MATLAB executions. Shows avg/max/min timing, timeouts, and slow calls. Use to diagnose performance issues.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -981,9 +1039,10 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
         elif name == "matlab_execute_code":
             code = arguments.get("code", "")
             capture_output = arguments.get("capture_output", True)
+            timeout = arguments.get("timeout", None)
             if not code:
                 return [TextContent(type="text", text="Error: code is required")]
-            result = matlab_execute_code(code, capture_output)
+            result = matlab_execute_code(code, capture_output, timeout=timeout)
             result_text = json.dumps(result, indent=2, default=str)
 
         elif name == "matlab_eval_expression":
@@ -1057,6 +1116,35 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
         elif name == "matlab_detect_toolboxes":
             result = matlab_execute_code("ver")
             result_text = json.dumps(result, indent=2, default=str)
+
+        # ============================================================
+        # Async execution & performance monitoring
+        # ============================================================
+        elif name == "matlab_execute_async":
+            code = arguments.get("code", "")
+            if not code:
+                return [TextContent(type="text", text="Error: code is required")]
+            try:
+                task_id = engine_manager.execute_matlab_code_async(code)
+                result_text = json.dumps({"task_id": task_id, "status": "started"}, indent=2)
+            except RuntimeError as e:
+                result_text = json.dumps({"error": str(e)}, indent=2)
+
+        elif name == "matlab_check_task":
+            task_id = arguments.get("task_id", "")
+            if not task_id:
+                return [TextContent(type="text", text="Error: task_id is required")]
+            result_text = json.dumps(engine_manager.check_task(task_id), indent=2, default=str)
+
+        elif name == "matlab_cancel_task":
+            task_id = arguments.get("task_id", "")
+            if not task_id:
+                return [TextContent(type="text", text="Error: task_id is required")]
+            cancelled = engine_manager.cancel_task(task_id)
+            result_text = json.dumps({"cancelled": cancelled, "task_id": task_id}, indent=2)
+
+        elif name == "matlab_perf_summary":
+            result_text = json.dumps(engine_manager.get_perf_summary(), indent=2, default=str)
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
