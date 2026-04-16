@@ -1,0 +1,33 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments (machine-specific)
+.venv/
+venv/
+env/
+
+# VS Code settings (contains absolute paths)
+.vscode/
+
+# Local configuration (machine-specific)
+config.local.ps1
+
+# MATLAB temporary files
+*.asv
+*.slxc
+slprj/
+*.autosave
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test outputs
+test_output/
+*.log

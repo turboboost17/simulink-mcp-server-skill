@@ -1,0 +1,87 @@
+# Example Local Configuration File
+# Copy this to config.local.ps1 and customize for your machine
+# 
+# cp config.local.ps1.example config.local.ps1
+# Edit config.local.ps1 with your settings
+
+# ========================================
+# MATLAB Configuration
+# ========================================
+
+# MATLAB Installation Path
+# Leave empty ("") for auto-detection
+# Installer will search: R2025a, R2024b, R2024a, R2023b, R2023a
+$MATLAB_PATH = ""
+
+# Examples for non-standard installations:
+# $MATLAB_PATH = "D:\Software\MATLAB\R2025a"
+# $MATLAB_PATH = "C:\Apps\MATLAB\R2024b"
+
+# ========================================
+# Shared Engine Configuration  
+# ========================================
+
+# Shared Engine Name (must match MATLAB command)
+# This is the name you use in: matlab.engine.shareEngine('name')
+$SHARED_ENGINE_NAME = "SimulinkMCP"
+
+# Example for multiple MCP servers:
+# $SHARED_ENGINE_NAME = "SimulinkMCP_User1"
+# Then in MATLAB: matlab.engine.shareEngine('SimulinkMCP_User1')
+
+# ========================================
+# Python Configuration
+# ========================================
+
+# Python Version for UV
+# Leave empty ("") to use UV's default (usually latest stable)
+$PYTHON_VERSION = ""
+
+# Example to pin to specific version:
+# $PYTHON_VERSION = "3.12"
+# $PYTHON_VERSION = "3.11"
+
+# MCP Server Name in VS Code Copilot Chat
+# This is how the server appears in the Copilot MCP server list
+$MCP_SERVER_NAME = "simulink-mcp-server"
+
+# Example for multiple servers:
+# $MCP_SERVER_NAME = "simulink-mcp-dev"
+# $MCP_SERVER_NAME = "simulink-mcp-prod"
+
+# ========================================
+# Advanced: Custom Environment Variables
+# ========================================
+
+# Additional environment variables for the MCP server
+# Useful for licenses, paths, or custom configurations
+$CUSTOM_ENV_VARS = @{}
+
+# Examples:
+# $CUSTOM_ENV_VARS = @{
+#     "MATLAB_LICENSE_FILE" = "27000@license-server.company.com"
+#     "MLM_LICENSE_FILE" = "C:\Licenses\matlab.lic"
+#     "SIMULINK_DATA_PATH" = "D:\SimulinkData"
+#     "MY_CUSTOM_SETTING" = "value"
+# }
+
+# ========================================
+# Common Configurations
+# ========================================
+
+# Configuration 1: Standard Installation
+# MATLAB in default location, workspace settings
+# $MATLAB_PATH = ""
+# $SHARED_ENGINE_NAME = "SimulinkMCP"
+
+# Configuration 2: Custom MATLAB Location
+# Non-standard MATLAB path
+# $MATLAB_PATH = "D:\Programs\MATLAB\R2025a"
+# $SHARED_ENGINE_NAME = "SimulinkMCP"
+
+# Configuration 3: Network License Server
+# $MATLAB_PATH = ""
+# $SHARED_ENGINE_NAME = "SimulinkMCP"
+# $CUSTOM_ENV_VARS = @{
+#     "MLM_LICENSE_FILE" = "27000@license-server.company.com"
+# }
