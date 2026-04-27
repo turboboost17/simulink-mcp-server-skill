@@ -113,6 +113,18 @@ Main server implementation directory.
   - Cline extension setup
   - Configuration examples
 
+- **`docs/ENTERPRISE_DEPLOYMENT.md`**
+  - Non-UV, locked, and offline wheelhouse installation guidance
+  - Corporate MCP registry notes
+  - `SIMULINK_MCP_MODE` deployment profiles
+
+- **`docs/SIMULINK_FUNCTION_GAPS.md`**
+  - Public, sanitized list of unimplemented Simulink API candidates
+  - Replaces local saved MathWorks HTML exports for self-evaluation workflows
+
+- **`docs/RELEASE_PROCESS.md`**
+  - Versioned release, checksum, SBOM, and registry promotion process
+
 ## 📁 Configuration Files
 
 ### Python Environment
@@ -132,6 +144,9 @@ Main server implementation directory.
 ### VS Code Configuration
 - **`config/mcp.json.example`** ⭐ TEMPLATE
   - Portable MCP config template you can copy into other workspaces
+
+- **`config/mcp.readonly.json.example`**, **`config/mcp.open.json.example`**, **`config/mcp.full.json.example`**
+  - Mode-specific MCP config templates for registry and agent policy scoping
 
 - **`.vscode/mcp.json`** ⭐ AUTO-GENERATED (workspace-local)
   - Created by `install.ps1` in this workspace

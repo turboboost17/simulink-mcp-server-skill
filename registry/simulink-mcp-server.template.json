@@ -1,0 +1,32 @@
+{
+  "name": "simulink-mcp-server",
+  "displayName": "Simulink MCP Server",
+  "description": "Local MCP stdio server for MATLAB and Simulink through MATLAB Engine for Python.",
+  "version": "0.2.0",
+  "transport": "stdio",
+  "runtime": "python",
+  "command": "<PATH_TO_PYTHON_EXE>",
+  "args": ["-m", "simulink_mcp_server.mcp_server"],
+  "workingDirectory": "<ABSOLUTE_PATH_TO_simulink-mcp-server>",
+  "environment": {
+    "MATLAB_PATH": "C:\\Program Files\\MATLAB\\R2025a",
+    "SIMULINK_MCP_LOG_LEVEL": "WARNING",
+    "SIMULINK_MCP_MODE": "readonly"
+  },
+  "profiles": {
+    "readonly": {
+      "SIMULINK_MCP_MODE": "readonly"
+    },
+    "open": {
+      "SIMULINK_MCP_MODE": "open"
+    },
+    "full": {
+      "SIMULINK_MCP_MODE": "full"
+    }
+  },
+  "reviewNotes": [
+    "Runs locally over stdio and does not open a network listener.",
+    "Full mode can execute MATLAB code with the current user's permissions.",
+    "Use readonly mode for Ask/review agents."
+  ]
+}

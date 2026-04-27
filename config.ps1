@@ -20,6 +20,12 @@ $PYTHON_VERSION = ""
 # This is how the server appears in Copilot Chat
 $MCP_SERVER_NAME = "simulink-mcp-server"
 
+# MCP Exposure Mode
+# readonly = inspection tools only
+# open     = readonly plus model load/open and editor highlight
+# full     = all tools, including MATLAB execution and model edits
+$SIMULINK_MCP_MODE = "full"
+
 # Additional Environment Variables (optional)
 # Add any custom environment variables needed for your setup
 $CUSTOM_ENV_VARS = @{}

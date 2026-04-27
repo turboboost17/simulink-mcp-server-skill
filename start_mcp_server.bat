@@ -24,10 +24,12 @@ if "%ERRORLEVEL%"=="0" (
 REM Set environment variables (allow overrides)
 if "%MATLAB_PATH%"=="" set MATLAB_PATH=C:\Program Files\MATLAB\R2025a
 if "%SIMULINK_MCP_LOG_LEVEL%"=="" set SIMULINK_MCP_LOG_LEVEL=WARNING
+if "%SIMULINK_MCP_MODE%"=="" set SIMULINK_MCP_MODE=full
 
 echo [OK] Environment configured
 echo   MATLAB_PATH=%MATLAB_PATH%
 echo   SIMULINK_MCP_LOG_LEVEL=%SIMULINK_MCP_LOG_LEVEL%
+echo   SIMULINK_MCP_MODE=%SIMULINK_MCP_MODE%
 echo.
 
 REM Activate virtual environment

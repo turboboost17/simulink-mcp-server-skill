@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build cyclonedx-bom
+      - name: Build wheel and source distribution
+        run: python -m build
+      - name: Create checksums
+        shell: pwsh
+        run: |
+          Get-FileHash dist\* -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content dist\checksums.sha256
+      - name: Generate SBOM
+        run: cyclonedx-py requirements requirements.lock.txt --pyproject pyproject.toml --output-file dist\sbom.cdx.json --output-reproducible
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*

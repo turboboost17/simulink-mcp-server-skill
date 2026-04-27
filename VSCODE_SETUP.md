@@ -12,6 +12,8 @@ This repo ships MCP config templates you can copy into *any* other VS Code works
 
 Notes:
 - `SIMULINK_MCP_LOG_LEVEL` defaults to `WARNING` to keep VS Code from showing noisy stderr warnings.
+- `SIMULINK_MCP_MODE` controls which tools are registered: `readonly`, `open`, or `full`.
+- Use [config/mcp.readonly.json.example](config/mcp.readonly.json.example) for Ask/review agents and [config/mcp.full.json.example](config/mcp.full.json.example) for trusted editing agents.
 - `PYTHONPATH` is intentionally not required; `uv sync --no-prune` installs the package so `python -m simulink_mcp_server.mcp_server` works.
    - `--no-prune` avoids uninstalling the manually-installed MATLAB Engine package.
 

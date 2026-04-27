@@ -45,6 +45,11 @@ $PYTHON_VERSION = ""
 # This is how the server appears in the Copilot MCP server list
 $MCP_SERVER_NAME = "simulink-mcp-server"
 
+# MCP Exposure Mode
+# Options: "readonly", "open", "full"
+# Use "readonly" for Ask/review agents and "full" for trusted local development.
+$SIMULINK_MCP_MODE = "full"
+
 # Example for multiple servers:
 # $MCP_SERVER_NAME = "simulink-mcp-dev"
 # $MCP_SERVER_NAME = "simulink-mcp-prod"

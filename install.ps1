@@ -23,6 +23,7 @@ if (Test-Path $ConfigFile) {
     # Set defaults if config not loaded
     if (-not $SHARED_ENGINE_NAME) { $SHARED_ENGINE_NAME = "SimulinkMCP" }
     if (-not $MCP_SERVER_NAME) { $MCP_SERVER_NAME = "simulink-mcp-server" }
+    if (-not $SIMULINK_MCP_MODE) { $SIMULINK_MCP_MODE = "full" }
 }
 
 Write-Host ""
@@ -146,7 +147,7 @@ if ($engineInstalled -eq "true") {
         Write-Host "2. Run the following commands:" -ForegroundColor Yellow
         Write-Host ""
         Write-Host "   cd `"$MatlabPath\extern\engines\python`"" -ForegroundColor Cyan
-        Write-Host "   $venvPython setup.py install" -ForegroundColor Cyan
+        Write-Host "   $venvPython -m pip install ." -ForegroundColor Cyan
         Write-Host ""
         Write-Host "Then re-run this script to continue." -ForegroundColor Yellow
         exit 1
@@ -163,8 +164,15 @@ if ($engineInstalled -eq "true") {
     
     try {
         Push-Location $enginePath
-        & $venvPython setup.py install 2>&1 | Out-Null
+        & $venvPython -m pip install . 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0 -and (Test-Path (Join-Path $enginePath "setup.py"))) {
+            Write-Host "  ⚠ pip install failed; trying legacy setup.py install..." -ForegroundColor Yellow
+            & $venvPython setup.py install 2>&1 | Out-Null
+        }
         Pop-Location
+        if ($LASTEXITCODE -ne 0) {
+            throw "MATLAB Engine installer returned exit code $LASTEXITCODE"
+        }
         Write-Host "  ✓ MATLAB Engine installed successfully" -ForegroundColor Green
     } catch {
         Write-Host "  ✗ Failed to install MATLAB Engine" -ForegroundColor Red
@@ -261,7 +269,8 @@ $mcpJsonContent = @"
             "cwd": "$projectRootEscaped",
             "env": {
                 "MATLAB_PATH": "$matlabPathEscaped",
-                "SIMULINK_MCP_LOG_LEVEL": "WARNING"
+                "SIMULINK_MCP_LOG_LEVEL": "WARNING",
+                "SIMULINK_MCP_MODE": "$SIMULINK_MCP_MODE"
             }
         }
     }

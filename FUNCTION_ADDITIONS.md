@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Total Functions: 37** 
+**Legacy feature note:** this document covers the original 37 Simulink and MATLAB execution tools. The current MCP server exposes 43 tools after code-quality and async/performance additions. See [README.md](README.md) and [docs/SIMULINK_FUNCTION_GAPS.md](docs/SIMULINK_FUNCTION_GAPS.md) for the current release surface.
 - **29 Simulink Functions** (13 original + 16 additions)
 - **8 MATLAB Functions** (NEW in v2.0)
 

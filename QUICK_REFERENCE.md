@@ -310,13 +310,13 @@ simulink_model_is_loaded(model)      → Check if model is in memory
 
 ### Test Connection
 ```bash
-cd E:\Documents\MATLAB\MCP\simulink-mcp-server
+cd <path-to>\simulink-mcp-server
 .\.venv\Scripts\python.exe test_connection.py
 ```
 
 ### Test Interactive Functions
 ```bash
-cd E:\Documents\MATLAB\MCP\simulink-mcp-server
+cd <path-to>\simulink-mcp-server
 .\.venv\Scripts\python.exe test_interactive_functions.py
 ```
 

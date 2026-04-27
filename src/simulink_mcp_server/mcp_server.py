@@ -11,37 +11,54 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Sequence, Dict, Optional, List, cast
+from typing import Any, Dict, List, Optional, Sequence, cast
 
-from .server import (
-    engine_manager, connect_simulink_engine, simulink_new_model, simulink_add_block,
-    simulink_connect_blocks, simulink_get_param, simulink_set_param,
-    # Interactive context functions
-    simulink_get_current_model, simulink_get_current_block,
-    simulink_get_current_block_handle, simulink_get_current_system,
-    simulink_get_selected_blocks, simulink_find_blocks,
-    # Enhanced editing functions
-    simulink_delete_block, simulink_delete_line, simulink_replace_block,
-    simulink_highlight_block, simulink_arrange_system, simulink_route_line,
+from .server import (  # Interactive context functions; Enhanced editing functions; Model management functions; Bus operations; MATLAB execution functions
+    connect_simulink_engine,
+    engine_manager,
+    matlab_call_function,
+    matlab_clear_workspace,
+    matlab_eval_expression,
+    matlab_execute_code,
+    matlab_get_workspace_variable,
+    matlab_list_workspace_variables,
+    matlab_run_script,
+    matlab_set_workspace_variable,
+    simulink_add_block,
+    simulink_add_bus_element,
+    simulink_arrange_system,
+    simulink_connect_blocks,
+    simulink_create_bus_selector,
+    simulink_create_subsystem,
+    simulink_delete_block,
+    simulink_delete_line,
     simulink_expand_subsystem,
-    # Model management functions
-    simulink_model_is_loaded, simulink_model_is_dirty,
-    simulink_save_model, simulink_load_model, simulink_run_simulation,
-    simulink_list_blocks, simulink_create_subsystem,
-    # Bus operations
-    simulink_add_bus_element, simulink_create_bus_selector,
-    # MATLAB execution functions
-    matlab_execute_code, matlab_eval_expression, matlab_get_workspace_variable,
-    matlab_set_workspace_variable, matlab_list_workspace_variables, matlab_clear_workspace,
-    matlab_run_script, matlab_call_function,
+    simulink_find_blocks,
+    simulink_get_current_block,
+    simulink_get_current_block_handle,
+    simulink_get_current_model,
+    simulink_get_current_system,
+    simulink_get_param,
+    simulink_get_selected_blocks,
+    simulink_highlight_block,
+    simulink_list_blocks,
+    simulink_load_model,
+    simulink_model_is_dirty,
+    simulink_model_is_loaded,
+    simulink_new_model,
+    simulink_replace_block,
+    simulink_route_line,
+    simulink_run_simulation,
+    simulink_save_model,
+    simulink_set_param,
 )
 
 try:
     from mcp.server import Server
     from mcp.server.stdio import stdio_server
     from mcp.types import (
-        Tool,
         TextContent,
+        Tool,
     )
 except ImportError:
     # Fallback for different MCP package structure
@@ -55,8 +72,77 @@ _log_level = getattr(logging, _log_level_name, logging.WARNING)
 logging.basicConfig(level=_log_level, stream=sys.stderr)
 logger = logging.getLogger(__name__)
 
+# MCP exposure modes. These filter tool registration and direct tool calls so
+# enterprise registries can expose a narrower capability set without patching.
+_VALID_MCP_MODES = {"full", "open", "readonly"}
+
+_READONLY_TOOL_NAMES = frozenset(
+    {
+        "connect_simulink_engine",
+        "simulink_get_current_model",
+        "simulink_get_current_block",
+        "simulink_get_current_block_handle",
+        "simulink_get_current_system",
+        "simulink_get_selected_blocks",
+        "simulink_find_blocks",
+        "simulink_list_blocks",
+        "simulink_get_param",
+        "simulink_model_is_loaded",
+        "simulink_model_is_dirty",
+        "matlab_get_workspace_variable",
+        "matlab_list_workspace_variables",
+        "matlab_check_code",
+        "matlab_detect_toolboxes",
+        "matlab_perf_summary",
+    }
+)
+
+_OPEN_TOOL_NAMES = _READONLY_TOOL_NAMES | frozenset(
+    {
+        "simulink_load_model",
+        "simulink_highlight_block",
+    }
+)
+
+
+def _get_mcp_mode() -> str:
+    """Return the current MCP exposure mode.
+
+    Default remains ``full`` for backward compatibility. Invalid values fail
+    closed to ``readonly`` because this setting is often controlled by an MCP
+    registry or shared VS Code configuration.
+    """
+
+    mode = os.getenv("SIMULINK_MCP_MODE", "full").strip().lower()
+    if mode in _VALID_MCP_MODES:
+        return mode
+    logger.warning("Invalid SIMULINK_MCP_MODE=%r; using readonly", mode)
+    return "readonly"
+
+
+def _tool_names_for_mode(mode: str) -> frozenset[str] | None:
+    if mode == "readonly":
+        return _READONLY_TOOL_NAMES
+    if mode == "open":
+        return _OPEN_TOOL_NAMES
+    return None
+
+
+def _is_tool_allowed(tool_name: str) -> bool:
+    allowed = _tool_names_for_mode(_get_mcp_mode())
+    return allowed is None or tool_name in allowed
+
+
+def _filter_tools_for_mode(tools: list[Tool]) -> list[Tool]:
+    allowed = _tool_names_for_mode(_get_mcp_mode())
+    if allowed is None:
+        return tools
+    return [tool for tool in tools if tool.name in allowed]
+
+
 # Initialize the server
 server = Server("simulink-mcp-server")
+
 
 @server.list_tools()
 async def handle_list_tools() -> list[Tool]:
@@ -68,11 +154,7 @@ async def handle_list_tools() -> list[Tool]:
         Tool(
             name="connect_simulink_engine",
             description="Connect to shared MATLAB engine for Simulink operations",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         # ============================================================
         # Interactive context functions
@@ -80,47 +162,27 @@ async def handle_list_tools() -> list[Tool]:
         Tool(
             name="simulink_get_current_model",
             description="Get the name of the currently active Simulink model (bdroot). Use this first to discover which model the user is working on.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
             name="simulink_get_current_block",
             description="Get the path and type of the currently selected block in Simulink (gcb). Returns block path and BlockType.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
             name="simulink_get_current_block_handle",
             description="Get the handle of the currently selected block (gcbh). Useful for operations that require block handles.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
             name="simulink_get_current_system",
             description="Get the path of the currently active Simulink system or subsystem (gcs). Identifies if the user is inside a subsystem.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
             name="simulink_get_selected_blocks",
             description="Get all currently selected blocks in the active Simulink window. Returns block paths and types.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
             name="simulink_find_blocks",
@@ -130,16 +192,16 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model to search"
+                        "description": "Name of the Simulink model to search",
                     },
                     "criteria": {
                         "type": "object",
                         "description": "Search criteria as key-value pairs, e.g. {'BlockType': 'Gain', 'Name': 'MyBlock'}",
-                        "additionalProperties": {"type": "string"}
-                    }
+                        "additionalProperties": {"type": "string"},
+                    },
                 },
-                "required": ["model_name", "criteria"]
-            }
+                "required": ["model_name", "criteria"],
+            },
         ),
         # ============================================================
         # Model management
@@ -152,11 +214,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name for the new Simulink model"
+                        "description": "Name for the new Simulink model",
                     }
                 },
-                "required": ["model_name"]
-            }
+                "required": ["model_name"],
+            },
         ),
         Tool(
             name="simulink_load_model",
@@ -166,11 +228,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Absolute path to the .slx model file"
+                        "description": "Absolute path to the .slx model file",
                     }
                 },
-                "required": ["file_path"]
-            }
+                "required": ["file_path"],
+            },
         ),
         Tool(
             name="simulink_save_model",
@@ -180,15 +242,15 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "file_path": {
                         "type": "string",
-                        "description": "Optional file path for Save-As"
-                    }
+                        "description": "Optional file path for Save-As",
+                    },
                 },
-                "required": ["model_name"]
-            }
+                "required": ["model_name"],
+            },
         ),
         Tool(
             name="simulink_model_is_loaded",
@@ -198,11 +260,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the model to check"
+                        "description": "Name of the model to check",
                     }
                 },
-                "required": ["model_name"]
-            }
+                "required": ["model_name"],
+            },
         ),
         Tool(
             name="simulink_model_is_dirty",
@@ -212,11 +274,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the model to check"
+                        "description": "Name of the model to check",
                     }
                 },
-                "required": ["model_name"]
-            }
+                "required": ["model_name"],
+            },
         ),
         Tool(
             name="simulink_run_simulation",
@@ -226,15 +288,15 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "stop_time": {
                         "type": "number",
-                        "description": "Optional simulation stop time in seconds"
-                    }
+                        "description": "Optional simulation stop time in seconds",
+                    },
                 },
-                "required": ["model_name"]
-            }
+                "required": ["model_name"],
+            },
         ),
         # ============================================================
         # Block operations
@@ -247,26 +309,26 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "block_type": {
                         "type": "string",
-                        "description": "Type of block (e.g., 'simulink/Sources/Constant')"
+                        "description": "Type of block (e.g., 'simulink/Sources/Constant')",
                     },
                     "block_name": {
                         "type": "string",
-                        "description": "Name for the block instance"
+                        "description": "Name for the block instance",
                     },
                     "position": {
                         "type": "array",
                         "items": {"type": "number"},
                         "description": "Optional position [left, top, right, bottom]",
                         "minItems": 4,
-                        "maxItems": 4
-                    }
+                        "maxItems": 4,
+                    },
                 },
-                "required": ["model_name", "block_type", "block_name"]
-            }
+                "required": ["model_name", "block_type", "block_name"],
+            },
         ),
         Tool(
             name="simulink_delete_block",
@@ -276,11 +338,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "block_path": {
                         "type": "string",
-                        "description": "Full path to the block (e.g., 'ModelName/BlockName')"
+                        "description": "Full path to the block (e.g., 'ModelName/BlockName')",
                     }
                 },
-                "required": ["block_path"]
-            }
+                "required": ["block_path"],
+            },
         ),
         Tool(
             name="simulink_replace_block",
@@ -290,19 +352,19 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "old_block_type": {
                         "type": "string",
-                        "description": "BlockType to replace (e.g., 'Gain')"
+                        "description": "BlockType to replace (e.g., 'Gain')",
                     },
                     "new_block_type": {
                         "type": "string",
-                        "description": "New block type path (e.g., 'simulink/Math Operations/Product')"
-                    }
+                        "description": "New block type path (e.g., 'simulink/Math Operations/Product')",
+                    },
                 },
-                "required": ["model_name", "old_block_type", "new_block_type"]
-            }
+                "required": ["model_name", "old_block_type", "new_block_type"],
+            },
         ),
         Tool(
             name="simulink_list_blocks",
@@ -312,15 +374,15 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "block_type": {
                         "type": "string",
-                        "description": "Optional BlockType filter (e.g., 'Gain', 'Sum', 'Scope')"
-                    }
+                        "description": "Optional BlockType filter (e.g., 'Gain', 'Sum', 'Scope')",
+                    },
                 },
-                "required": ["model_name"]
-            }
+                "required": ["model_name"],
+            },
         ),
         Tool(
             name="simulink_highlight_block",
@@ -330,16 +392,16 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "block_path": {
                         "type": "string",
-                        "description": "Full path to the block (e.g., 'ModelName/BlockName')"
+                        "description": "Full path to the block (e.g., 'ModelName/BlockName')",
                     },
                     "color": {
                         "type": "string",
                         "description": "Highlight color (red, green, yellow, cyan, magenta, none)",
-                        "enum": ["red", "green", "yellow", "cyan", "magenta", "none"]
-                    }
+                        "enum": ["red", "green", "yellow", "cyan", "magenta", "none"],
+                    },
                 },
-                "required": ["block_path"]
-            }
+                "required": ["block_path"],
+            },
         ),
         # ============================================================
         # Connection / line operations
@@ -352,27 +414,33 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "source_block": {
                         "type": "string",
-                        "description": "Name of the source block"
+                        "description": "Name of the source block",
                     },
                     "source_port": {
                         "type": "integer",
-                        "description": "Output port number (1-based)"
+                        "description": "Output port number (1-based)",
                     },
                     "dest_block": {
                         "type": "string",
-                        "description": "Name of the destination block"
+                        "description": "Name of the destination block",
                     },
                     "dest_port": {
                         "type": "integer",
-                        "description": "Input port number (1-based)"
-                    }
+                        "description": "Input port number (1-based)",
+                    },
                 },
-                "required": ["model_name", "source_block", "source_port", "dest_block", "dest_port"]
-            }
+                "required": [
+                    "model_name",
+                    "source_block",
+                    "source_port",
+                    "dest_block",
+                    "dest_port",
+                ],
+            },
         ),
         Tool(
             name="simulink_delete_line",
@@ -382,27 +450,33 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "source_block": {
                         "type": "string",
-                        "description": "Name of the source block"
+                        "description": "Name of the source block",
                     },
                     "source_port": {
                         "type": "integer",
-                        "description": "Output port number (1-based)"
+                        "description": "Output port number (1-based)",
                     },
                     "dest_block": {
                         "type": "string",
-                        "description": "Name of the destination block"
+                        "description": "Name of the destination block",
                     },
                     "dest_port": {
                         "type": "integer",
-                        "description": "Input port number (1-based)"
-                    }
+                        "description": "Input port number (1-based)",
+                    },
                 },
-                "required": ["model_name", "source_block", "source_port", "dest_block", "dest_port"]
-            }
+                "required": [
+                    "model_name",
+                    "source_block",
+                    "source_port",
+                    "dest_block",
+                    "dest_port",
+                ],
+            },
         ),
         # ============================================================
         # Parameter management
@@ -415,20 +489,20 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "block_name": {
                         "type": "string",
                         "description": "Name of the block (leave empty for model-level parameters)",
-                        "default": ""
+                        "default": "",
                     },
                     "parameter": {
                         "type": "string",
-                        "description": "Parameter name to retrieve"
-                    }
+                        "description": "Parameter name to retrieve",
+                    },
                 },
-                "required": ["model_name", "parameter"]
-            }
+                "required": ["model_name", "parameter"],
+            },
         ),
         Tool(
             name="simulink_set_param",
@@ -438,24 +512,21 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "block_name": {
                         "type": "string",
                         "description": "Name of the block (leave empty for model-level parameters)",
-                        "default": ""
+                        "default": "",
                     },
                     "parameter": {
                         "type": "string",
-                        "description": "Parameter name to set"
+                        "description": "Parameter name to set",
                     },
-                    "value": {
-                        "type": "string",
-                        "description": "New parameter value"
-                    }
+                    "value": {"type": "string", "description": "New parameter value"},
                 },
-                "required": ["model_name", "parameter", "value"]
-            }
+                "required": ["model_name", "parameter", "value"],
+            },
         ),
         # ============================================================
         # Hierarchy & layout
@@ -468,20 +539,20 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "blocks": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of block names to group into subsystem"
+                        "description": "List of block names to group into subsystem",
                     },
                     "subsystem_name": {
                         "type": "string",
-                        "description": "Name for the new subsystem"
-                    }
+                        "description": "Name for the new subsystem",
+                    },
                 },
-                "required": ["model_name", "blocks", "subsystem_name"]
-            }
+                "required": ["model_name", "blocks", "subsystem_name"],
+            },
         ),
         Tool(
             name="simulink_expand_subsystem",
@@ -491,11 +562,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "subsystem_path": {
                         "type": "string",
-                        "description": "Full path to the subsystem (e.g., 'ModelName/SubsystemName')"
+                        "description": "Full path to the subsystem (e.g., 'ModelName/SubsystemName')",
                     }
                 },
-                "required": ["subsystem_path"]
-            }
+                "required": ["subsystem_path"],
+            },
         ),
         Tool(
             name="simulink_arrange_system",
@@ -505,11 +576,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "system_path": {
                         "type": "string",
-                        "description": "Path to the system to arrange (model or subsystem)"
+                        "description": "Path to the system to arrange (model or subsystem)",
                     }
                 },
-                "required": ["system_path"]
-            }
+                "required": ["system_path"],
+            },
         ),
         Tool(
             name="simulink_route_line",
@@ -519,11 +590,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "line_handle": {
                         "type": "integer",
-                        "description": "Handle of the line to route"
+                        "description": "Handle of the line to route",
                     }
                 },
-                "required": ["line_handle"]
-            }
+                "required": ["line_handle"],
+            },
         ),
         # ============================================================
         # Bus operations
@@ -536,27 +607,27 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "bus_object_name": {
                         "type": "string",
-                        "description": "Name of the bus object"
+                        "description": "Name of the bus object",
                     },
                     "element_name": {
                         "type": "string",
-                        "description": "Name of the element to add"
+                        "description": "Name of the element to add",
                     },
                     "data_type": {
                         "type": "string",
-                        "description": "Data type (default: 'double')"
+                        "description": "Data type (default: 'double')",
                     },
                     "dimensions": {
                         "type": "string",
-                        "description": "Dimensions (default: '1')"
-                    }
+                        "description": "Dimensions (default: '1')",
+                    },
                 },
-                "required": ["model_name", "bus_object_name", "element_name"]
-            }
+                "required": ["model_name", "bus_object_name", "element_name"],
+            },
         ),
         Tool(
             name="simulink_create_bus_selector",
@@ -566,24 +637,29 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "Name of the Simulink model"
+                        "description": "Name of the Simulink model",
                     },
                     "bus_signal_block": {
                         "type": "string",
-                        "description": "Name of the bus signal source block"
+                        "description": "Name of the bus signal source block",
                     },
                     "selected_signals": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of signal names to select"
+                        "description": "List of signal names to select",
                     },
                     "selector_name": {
                         "type": "string",
-                        "description": "Name for the new Bus Selector block"
-                    }
+                        "description": "Name for the new Bus Selector block",
+                    },
                 },
-                "required": ["model_name", "bus_signal_block", "selected_signals", "selector_name"]
-            }
+                "required": [
+                    "model_name",
+                    "bus_signal_block",
+                    "selected_signals",
+                    "selector_name",
+                ],
+            },
         ),
         # ============================================================
         # MATLAB code execution tools
@@ -594,21 +670,18 @@ async def handle_list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": "MATLAB code to execute"
-                    },
+                    "code": {"type": "string", "description": "MATLAB code to execute"},
                     "capture_output": {
                         "type": "boolean",
-                        "description": "Whether to capture and return output (default: true)"
+                        "description": "Whether to capture and return output (default: true)",
                     },
                     "timeout": {
                         "type": "integer",
-                        "description": "Timeout in seconds. 0=no timeout. Default: MATLAB_TIMEOUT env var or 30s. Use higher values for SSH/network/simulation commands."
-                    }
+                        "description": "Timeout in seconds. 0=no timeout. Default: MATLAB_TIMEOUT env var or 30s. Use higher values for SSH/network/simulation commands.",
+                    },
                 },
-                "required": ["code"]
-            }
+                "required": ["code"],
+            },
         ),
         Tool(
             name="matlab_eval_expression",
@@ -618,11 +691,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "expression": {
                         "type": "string",
-                        "description": "MATLAB expression to evaluate (e.g., 'sqrt(144)', '2^10')"
+                        "description": "MATLAB expression to evaluate (e.g., 'sqrt(144)', '2^10')",
                     }
                 },
-                "required": ["expression"]
-            }
+                "required": ["expression"],
+            },
         ),
         Tool(
             name="matlab_get_workspace_variable",
@@ -632,11 +705,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "variable_name": {
                         "type": "string",
-                        "description": "Name of the variable to retrieve"
+                        "description": "Name of the variable to retrieve",
                     }
                 },
-                "required": ["variable_name"]
-            }
+                "required": ["variable_name"],
+            },
         ),
         Tool(
             name="matlab_set_workspace_variable",
@@ -646,23 +719,19 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "variable_name": {
                         "type": "string",
-                        "description": "Name of the variable to set"
+                        "description": "Name of the variable to set",
                     },
                     "value": {
                         "description": "Value to assign (will be converted to appropriate MATLAB type)"
-                    }
+                    },
                 },
-                "required": ["variable_name", "value"]
-            }
+                "required": ["variable_name", "value"],
+            },
         ),
         Tool(
             name="matlab_list_workspace_variables",
             description="List all variables in the MATLAB workspace with type and size details (whos)",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
             name="matlab_clear_workspace",
@@ -673,11 +742,11 @@ async def handle_list_tools() -> list[Tool]:
                     "variables": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of variable names to clear. If not provided, clears all."
+                        "description": "List of variable names to clear. If not provided, clears all.",
                     }
                 },
-                "required": []
-            }
+                "required": [],
+            },
         ),
         Tool(
             name="matlab_run_script",
@@ -687,11 +756,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "script_path": {
                         "type": "string",
-                        "description": "Absolute path to the .m script file"
+                        "description": "Absolute path to the .m script file",
                     }
                 },
-                "required": ["script_path"]
-            }
+                "required": ["script_path"],
+            },
         ),
         Tool(
             name="matlab_call_function",
@@ -701,20 +770,20 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "function_name": {
                         "type": "string",
-                        "description": "Name of the MATLAB function"
+                        "description": "Name of the MATLAB function",
                     },
                     "args": {
                         "type": "array",
                         "items": {},
-                        "description": "Positional arguments for the function"
+                        "description": "Positional arguments for the function",
                     },
                     "nargout": {
                         "type": "integer",
-                        "description": "Number of output arguments (default: 1)"
-                    }
+                        "description": "Number of output arguments (default: 1)",
+                    },
                 },
-                "required": ["function_name"]
-            }
+                "required": ["function_name"],
+            },
         ),
         # ============================================================
         # MATLAB code quality (matching MathWorks core server features)
@@ -727,11 +796,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "script_path": {
                         "type": "string",
-                        "description": "Absolute path to the MATLAB .m file to analyze"
+                        "description": "Absolute path to the MATLAB .m file to analyze",
                     }
                 },
-                "required": ["script_path"]
-            }
+                "required": ["script_path"],
+            },
         ),
         Tool(
             name="matlab_run_tests",
@@ -741,20 +810,16 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "script_path": {
                         "type": "string",
-                        "description": "Absolute path to the MATLAB test .m file"
+                        "description": "Absolute path to the MATLAB test .m file",
                     }
                 },
-                "required": ["script_path"]
-            }
+                "required": ["script_path"],
+            },
         ),
         Tool(
             name="matlab_detect_toolboxes",
             description="Returns information about installed MATLAB and toolboxes, including version numbers",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         # ============================================================
         # Async execution & performance monitoring
@@ -767,11 +832,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "code": {
                         "type": "string",
-                        "description": "MATLAB code to execute asynchronously"
+                        "description": "MATLAB code to execute asynchronously",
                     }
                 },
-                "required": ["code"]
-            }
+                "required": ["code"],
+            },
         ),
         Tool(
             name="matlab_check_task",
@@ -781,11 +846,11 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {
                     "task_id": {
                         "type": "string",
-                        "description": "Task ID returned by matlab_execute_async"
+                        "description": "Task ID returned by matlab_execute_async",
                     }
                 },
-                "required": ["task_id"]
-            }
+                "required": ["task_id"],
+            },
         ),
         Tool(
             name="matlab_cancel_task",
@@ -793,29 +858,25 @@ async def handle_list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "task_id": {
-                        "type": "string",
-                        "description": "Task ID to cancel"
-                    }
+                    "task_id": {"type": "string", "description": "Task ID to cancel"}
                 },
-                "required": ["task_id"]
-            }
+                "required": ["task_id"],
+            },
         ),
         Tool(
             name="matlab_perf_summary",
             description="Get performance summary of recent MATLAB executions. Shows avg/max/min timing, timeouts, and slow calls. Use to diagnose performance issues.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            inputSchema={"type": "object", "properties": {}, "required": []},
         ),
     ]
 
-    return tools
+    return _filter_tools_for_mode(tools)
+
 
 @server.call_tool()
-async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[TextContent]:
+async def handle_call_tool(
+    name: str, arguments: Dict[str, Any] | None
+) -> list[TextContent]:
     """Handle tool calls.
 
     MCP SDK >=1.17 expects the handler to return an iterable of content blocks
@@ -824,6 +885,18 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
     try:
         if arguments is None:
             arguments = {}
+
+        if not _is_tool_allowed(name):
+            mode = _get_mcp_mode()
+            return [
+                TextContent(
+                    type="text",
+                    text=(
+                        f"Tool '{name}' is not available when "
+                        f"SIMULINK_MCP_MODE={mode}."
+                    ),
+                )
+            ]
 
         result_text: str = ""
 
@@ -908,8 +981,15 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             block_name = arguments.get("block_name", "")
             position = arguments.get("position")
             if not all([model_name, block_type, block_name]):
-                return [TextContent(type="text", text="Error: model_name, block_type, and block_name are required")]
-            result_text = simulink_add_block(model_name, block_type, block_name, position)
+                return [
+                    TextContent(
+                        type="text",
+                        text="Error: model_name, block_type, and block_name are required",
+                    )
+                ]
+            result_text = simulink_add_block(
+                model_name, block_type, block_name, position
+            )
 
         elif name == "simulink_delete_block":
             block_path = arguments.get("block_path", "")
@@ -922,8 +1002,15 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             old_block_type = arguments.get("old_block_type", "")
             new_block_type = arguments.get("new_block_type", "")
             if not all([model_name, old_block_type, new_block_type]):
-                return [TextContent(type="text", text="Error: model_name, old_block_type, new_block_type required")]
-            result_text = simulink_replace_block(model_name, old_block_type, new_block_type)
+                return [
+                    TextContent(
+                        type="text",
+                        text="Error: model_name, old_block_type, new_block_type required",
+                    )
+                ]
+            result_text = simulink_replace_block(
+                model_name, old_block_type, new_block_type
+            )
 
         elif name == "simulink_list_blocks":
             model_name = arguments.get("model_name", "")
@@ -948,9 +1035,20 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             source_port = arguments.get("source_port")
             dest_block = arguments.get("dest_block", "")
             dest_port = arguments.get("dest_port")
-            if not all([model_name, source_block, source_port, dest_block, dest_port]):
-                return [TextContent(type="text", text="Error: all connection parameters are required")]
-            result_text = simulink_connect_blocks(model_name, source_block, int(source_port), dest_block, int(dest_port))
+            if (
+                not all([model_name, source_block, dest_block])
+                or source_port is None
+                or dest_port is None
+            ):
+                return [
+                    TextContent(
+                        type="text",
+                        text="Error: all connection parameters are required",
+                    )
+                ]
+            result_text = simulink_connect_blocks(
+                model_name, source_block, int(source_port), dest_block, int(dest_port)
+            )
 
         elif name == "simulink_delete_line":
             model_name = arguments.get("model_name", "")
@@ -958,9 +1056,20 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             source_port = arguments.get("source_port")
             dest_block = arguments.get("dest_block", "")
             dest_port = arguments.get("dest_port")
-            if not all([model_name, source_block, source_port, dest_block, dest_port]):
-                return [TextContent(type="text", text="Error: all connection parameters are required")]
-            result_text = simulink_delete_line(model_name, source_block, int(source_port), dest_block, int(dest_port))
+            if (
+                not all([model_name, source_block, dest_block])
+                or source_port is None
+                or dest_port is None
+            ):
+                return [
+                    TextContent(
+                        type="text",
+                        text="Error: all connection parameters are required",
+                    )
+                ]
+            result_text = simulink_delete_line(
+                model_name, source_block, int(source_port), dest_block, int(dest_port)
+            )
 
         # ============================================================
         # Parameter management
@@ -970,7 +1079,11 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             block_name = arguments.get("block_name", "")
             parameter = arguments.get("parameter", "")
             if not all([model_name, parameter]):
-                return [TextContent(type="text", text="Error: model_name and parameter are required")]
+                return [
+                    TextContent(
+                        type="text", text="Error: model_name and parameter are required"
+                    )
+                ]
             result_text = simulink_get_param(model_name, block_name, parameter)
 
         elif name == "simulink_set_param":
@@ -979,7 +1092,12 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             parameter = arguments.get("parameter", "")
             value = arguments.get("value", "")
             if not all([model_name, parameter, value]):
-                return [TextContent(type="text", text="Error: model_name, parameter, and value are required")]
+                return [
+                    TextContent(
+                        type="text",
+                        text="Error: model_name, parameter, and value are required",
+                    )
+                ]
             result_text = simulink_set_param(model_name, block_name, parameter, value)
 
         # ============================================================
@@ -990,13 +1108,20 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             blocks = arguments.get("blocks", [])
             subsystem_name = arguments.get("subsystem_name", "")
             if not all([model_name, blocks, subsystem_name]):
-                return [TextContent(type="text", text="Error: model_name, blocks, and subsystem_name are required")]
+                return [
+                    TextContent(
+                        type="text",
+                        text="Error: model_name, blocks, and subsystem_name are required",
+                    )
+                ]
             result_text = simulink_create_subsystem(model_name, blocks, subsystem_name)
 
         elif name == "simulink_expand_subsystem":
             subsystem_path = arguments.get("subsystem_path", "")
             if not subsystem_path:
-                return [TextContent(type="text", text="Error: subsystem_path is required")]
+                return [
+                    TextContent(type="text", text="Error: subsystem_path is required")
+                ]
             result_text = simulink_expand_subsystem(subsystem_path)
 
         elif name == "simulink_arrange_system":
@@ -1021,8 +1146,15 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             data_type = arguments.get("data_type", "double")
             dimensions = arguments.get("dimensions", "1")
             if not all([model_name, bus_object_name, element_name]):
-                return [TextContent(type="text", text="Error: model_name, bus_object_name, element_name required")]
-            result_text = simulink_add_bus_element(model_name, bus_object_name, element_name, data_type, dimensions)
+                return [
+                    TextContent(
+                        type="text",
+                        text="Error: model_name, bus_object_name, element_name required",
+                    )
+                ]
+            result_text = simulink_add_bus_element(
+                model_name, bus_object_name, element_name, data_type, dimensions
+            )
 
         elif name == "simulink_create_bus_selector":
             model_name = arguments.get("model_name", "")
@@ -1030,8 +1162,15 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             selected_signals = arguments.get("selected_signals", [])
             selector_name = arguments.get("selector_name", "")
             if not all([model_name, bus_signal_block, selected_signals, selector_name]):
-                return [TextContent(type="text", text="Error: all bus selector parameters are required")]
-            result_text = simulink_create_bus_selector(model_name, bus_signal_block, selected_signals, selector_name)
+                return [
+                    TextContent(
+                        type="text",
+                        text="Error: all bus selector parameters are required",
+                    )
+                ]
+            result_text = simulink_create_bus_selector(
+                model_name, bus_signal_block, selected_signals, selector_name
+            )
 
         # ============================================================
         # MATLAB execution tools
@@ -1055,7 +1194,9 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
         elif name == "matlab_get_workspace_variable":
             variable_name = arguments.get("variable_name", "")
             if not variable_name:
-                return [TextContent(type="text", text="Error: variable_name is required")]
+                return [
+                    TextContent(type="text", text="Error: variable_name is required")
+                ]
             result = matlab_get_workspace_variable(variable_name)
             result_text = json.dumps(result, indent=2, default=str)
 
@@ -1063,7 +1204,9 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             variable_name = arguments.get("variable_name", "")
             value = arguments.get("value")
             if not variable_name:
-                return [TextContent(type="text", text="Error: variable_name is required")]
+                return [
+                    TextContent(type="text", text="Error: variable_name is required")
+                ]
             result = matlab_set_workspace_variable(variable_name, value)
             result_text = json.dumps(result, indent=2, default=str)
 
@@ -1088,7 +1231,9 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             args = arguments.get("args", [])
             nargout = arguments.get("nargout", 1)
             if not function_name:
-                return [TextContent(type="text", text="Error: function_name is required")]
+                return [
+                    TextContent(type="text", text="Error: function_name is required")
+                ]
             result = matlab_call_function(function_name, *args, nargout=nargout)
             result_text = json.dumps(result, indent=2, default=str)
 
@@ -1126,7 +1271,9 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
                 return [TextContent(type="text", text="Error: code is required")]
             try:
                 task_id = engine_manager.execute_matlab_code_async(code)
-                result_text = json.dumps({"task_id": task_id, "status": "started"}, indent=2)
+                result_text = json.dumps(
+                    {"task_id": task_id, "status": "started"}, indent=2
+                )
             except RuntimeError as e:
                 result_text = json.dumps({"error": str(e)}, indent=2)
 
@@ -1134,17 +1281,23 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> list[
             task_id = arguments.get("task_id", "")
             if not task_id:
                 return [TextContent(type="text", text="Error: task_id is required")]
-            result_text = json.dumps(engine_manager.check_task(task_id), indent=2, default=str)
+            result_text = json.dumps(
+                engine_manager.check_task(task_id), indent=2, default=str
+            )
 
         elif name == "matlab_cancel_task":
             task_id = arguments.get("task_id", "")
             if not task_id:
                 return [TextContent(type="text", text="Error: task_id is required")]
             cancelled = engine_manager.cancel_task(task_id)
-            result_text = json.dumps({"cancelled": cancelled, "task_id": task_id}, indent=2)
+            result_text = json.dumps(
+                {"cancelled": cancelled, "task_id": task_id}, indent=2
+            )
 
         elif name == "matlab_perf_summary":
-            result_text = json.dumps(engine_manager.get_perf_summary(), indent=2, default=str)
+            result_text = json.dumps(
+                engine_manager.get_perf_summary(), indent=2, default=str
+            )
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
@@ -1164,11 +1317,14 @@ async def main():
 
     # Run the MCP server
     async with stdio_server() as streams:
-        await server.run(
-            streams[0],
-            streams[1],
-            server.create_initialization_options()
-        )
+        await server.run(streams[0], streams[1], server.create_initialization_options())
+
+
+def cli() -> None:
+    """Synchronous console-script entrypoint."""
+
+    asyncio.run(main())
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    cli()

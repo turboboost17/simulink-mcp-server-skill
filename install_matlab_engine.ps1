@@ -4,12 +4,23 @@
 Write-Host "Installing MATLAB Engine for Python..." -ForegroundColor Cyan
 Write-Host ""
 
-$ProjectRoot = Split-Path -Parent $PSScriptRoot
-if (-not $ProjectRoot) {
-    $ProjectRoot = $PSScriptRoot
+$ProjectRoot = $PSScriptRoot
+
+$ConfigFile = Join-Path $ProjectRoot "config.local.ps1"
+if (Test-Path $ConfigFile) {
+    . $ConfigFile
+} else {
+    $ConfigFile = Join-Path $ProjectRoot "config.ps1"
+    if (Test-Path $ConfigFile) {
+        . $ConfigFile
+    }
 }
 
-$MatlabPath = "C:\Program Files\MATLAB\R2025a"
+if ($MATLAB_PATH) {
+    $MatlabPath = $MATLAB_PATH
+} else {
+    $MatlabPath = "C:\Program Files\MATLAB\R2025a"
+}
 $venvPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
 $enginePath = Join-Path $MatlabPath "extern\engines\python"
 
@@ -42,7 +53,7 @@ if (-not (Test-Path $MatlabPath)) {
 
 if (-not (Test-Path $venvPython)) {
     Write-Host "✗ Python virtual environment not found at: $venvPython" -ForegroundColor Red
-    Write-Host "  Please run 'uv sync' first to create the virtual environment" -ForegroundColor Yellow
+    Write-Host "  Please run '.\install.ps1' or create .venv with Python venv/pip first" -ForegroundColor Yellow
     exit 1
 }
 
@@ -79,8 +90,13 @@ Write-Host ""
 
 try {
     Push-Location $enginePath
-    & $venvPython setup.py install
+    & $venvPython -m pip install .
     $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0 -and (Test-Path (Join-Path $enginePath "setup.py"))) {
+        Write-Host "pip install failed; trying legacy setup.py install..." -ForegroundColor Yellow
+        & $venvPython setup.py install
+        $exitCode = $LASTEXITCODE
+    }
     Pop-Location
     
     if ($exitCode -eq 0) {

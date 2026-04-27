@@ -56,13 +56,14 @@ A Model Context Protocol (MCP) server that provides VS Code agents with comprehe
 
 ## What's New
 
-### Version 2.0 - MATLAB Code Execution
-- ✅ **8 new MATLAB functions** for general code execution
-- ✅ **Workspace integration** - variables persist across Simulink and MATLAB operations
-- ✅ **Script execution** - run .m files directly
-- ✅ **Function calling** - call any MATLAB function with arguments
-- ✅ **Expression evaluation** - evaluate and retrieve results
-- ✅ **Total functions: 37** (29 Simulink + 8 MATLAB)
+### Version 0.2.0 - Release Hardening
+- MIT license, security policy, third-party notices, and MathWorks trademark attribution
+- `SIMULINK_MCP_MODE` with `readonly`, `open`, and `full` tool exposure modes
+- Non-UV and offline wheelhouse installation guidance for enterprise review
+- Sanitized `.github` Copilot instructions and skills for public repo use
+- Function-gap markdown that replaces local saved MathWorks HTML exports
+- CI and release workflows for tests, type checking, audit, SBOM, wheels, source distributions, checksums, and GitHub release artifacts
+- Total MCP tools: 43
 
 ## Installation
 
@@ -104,7 +105,7 @@ See [INSTALL.md](INSTALL.md) for step-by-step manual installation instructions.
 ### Prerequisites
 - **MATLAB** (R2023a or newer) with Simulink
 - **Python 3.10+** (installed by UV automatically)
-- **UV package manager** ([install](https://docs.astral.sh/uv/))
+- **UV package manager** ([install](https://docs.astral.sh/uv/)) for the automated installer, or standard `venv`/`pip` for non-UV environments
 - **VS Code** with GitHub Copilot extension
 - **Administrator access** (for MATLAB Engine installation only)
 
@@ -122,6 +123,10 @@ Copy [config/mcp.json.example](config/mcp.json.example) into your *project* as `
 
 This repo’s MCP entrypoint is:
 - `python -m simulink_mcp_server.mcp_server`
+
+For review-only use, start from
+[config/mcp.readonly.json.example](config/mcp.readonly.json.example). For trusted
+local editing, use [config/mcp.full.json.example](config/mcp.full.json.example).
 
 ### Optional: Copilot-specific settings
 If you need a Copilot-specific configuration, copy
@@ -175,7 +180,7 @@ Get information about your current position and selection in the Simulink Editor
 - `simulink_add_bus_element(model_name, bus_object_name, element_name, data_type, dimensions)` - Add bus element
 - `simulink_create_bus_selector(model_name, bus_signal_block, selected_signals, selector_name)` - Create bus selector
 
-**Total: 29 Simulink functions**
+**Subtotal: 28 Simulink and engine tools**
 
 ### MATLAB Code Execution (NEW!)
 - `matlab_execute_code(code, capture_output?)` - Execute arbitrary MATLAB code
@@ -188,6 +193,23 @@ Get information about your current position and selection in the Simulink Editor
 - `matlab_call_function(function_name, *args, nargout?)` - Call MATLAB function
 
 **Total: 8 MATLAB functions**
+
+### MATLAB Code Quality
+- `matlab_check_code(script_path)` - Run MATLAB static code analysis
+- `matlab_run_tests(script_path)` - Run MATLAB tests
+- `matlab_detect_toolboxes()` - List installed MATLAB products and versions
+
+**Total: 3 code quality tools**
+
+### Async Execution & Performance
+- `matlab_execute_async(code)` - Start long-running MATLAB code asynchronously
+- `matlab_check_task(task_id)` - Check async task status
+- `matlab_cancel_task(task_id)` - Cancel async task
+- `matlab_perf_summary()` - Summarize recent MATLAB execution timings
+
+**Total: 4 async/performance tools**
+
+**Grand total: 43 MCP tools**
 
 ## Usage Examples
 
@@ -332,6 +354,17 @@ simulink_create_bus_selector("MyModel", "BusCreator1", ["signal1", "signal2"], "
 
 - `MATLAB_PATH` - Path to MATLAB installation (default: `C:/Program Files/MATLAB/R2025a`)
 - `SIMULINK_MCP_LOG_LEVEL` - Logging level (`WARNING` by default; set to `INFO`/`DEBUG` to troubleshoot)
+- `SIMULINK_MCP_MODE` - Tool exposure mode: `readonly`, `open`, or `full` (`full` by default for backward compatibility)
+
+### Tool Exposure Modes
+
+| Mode | Intended use | Tool surface |
+|------|--------------|--------------|
+| `readonly` | Ask/review agents | Inspect current context, find/list blocks, read parameters/status, read workspace variables, code check, toolbox detection |
+| `open` | Review agents that can open models | `readonly` plus model loading and editor highlighting |
+| `full` | Trusted local development | All 43 tools, including MATLAB execution, model edits, save, simulation, async tasks |
+
+See [docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md) for corporate registry and offline install guidance.
 
 ## Troubleshooting
 
@@ -371,6 +404,15 @@ uv sync --extra dev --no-prune
 
 # Run tests
 uv run --extra dev pytest tests/
+```
+
+Without UV:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pytest -m "not integration"
 ```
 
 ### Development Mode
@@ -421,18 +463,21 @@ simulink-mcp-server/
 | Simulink | 25.1 | 10.2+ |
 | Python | 3.12.12 | 3.10 |
 | UV | 0.9.2 | 0.4.0 |
-| MCP SDK | 1.17.0 | 1.0.0 |
+| MCP SDK | 1.17.0 | 1.17.0 |
 
 ## Contributing
 
 This project uses:
-- **UV** for Python package management
+- **UV** or standard `venv`/`pip` for Python package management
 - **MCP SDK** for protocol implementation
 - **MATLAB Engine API** for MATLAB/Simulink interaction
 
 ## License
 
-This project is provided as-is for educational and development purposes.
+This project is released under the MIT License. See [LICENSE](LICENSE).
+
+MATLAB and Simulink are registered trademarks of The MathWorks, Inc. This
+project is not affiliated with, sponsored by, or endorsed by The MathWorks, Inc.
 
 ---
 

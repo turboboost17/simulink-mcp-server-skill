@@ -1,5 +1,24 @@
 # Changelog - Simulink MCP Server
 
+## Version 0.2.0 - Release Hardening
+
+### Added
+
+- MIT license, security policy, and third-party notices.
+- `SIMULINK_MCP_MODE` with `readonly`, `open`, and `full` tool exposure modes.
+- Sanitized Copilot instructions and skills for public repo use.
+- Enterprise deployment guide with non-UV, locked, and offline wheelhouse flows.
+- Internal MCP registry template.
+- Public Simulink function-gap markdown that avoids redistributing saved MathWorks HTML assets.
+- Unit tests for MCP mode filtering.
+- GitHub Actions CI and release workflows for tests, type checking, audit, SBOM, wheels, source distributions, checksums, and GitHub release artifacts.
+
+### Changed
+
+- Updated package metadata for public release readiness.
+- Added explicit MCP SDK 1.17+ dependency range.
+- Added NumPy as a declared runtime dependency.
+
 ## Version 2.0 - MATLAB Code Execution Integration (Current)
 
 ### 🆕 New Features

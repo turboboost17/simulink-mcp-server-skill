@@ -30,10 +30,14 @@ if (-not $env:MATLAB_PATH) {
 if (-not $env:SIMULINK_MCP_LOG_LEVEL) {
     $env:SIMULINK_MCP_LOG_LEVEL = "WARNING"
 }
+if (-not $env:SIMULINK_MCP_MODE) {
+    $env:SIMULINK_MCP_MODE = "full"
+}
 
 Write-Host "[OK] Environment configured" -ForegroundColor Green
 Write-Host "  MATLAB_PATH=$env:MATLAB_PATH" -ForegroundColor Gray
 Write-Host "  SIMULINK_MCP_LOG_LEVEL=$env:SIMULINK_MCP_LOG_LEVEL" -ForegroundColor Gray
+Write-Host "  SIMULINK_MCP_MODE=$env:SIMULINK_MCP_MODE" -ForegroundColor Gray
 Write-Host ""
 
 # Activate virtual environment and start server

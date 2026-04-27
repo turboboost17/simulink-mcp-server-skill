@@ -294,7 +294,7 @@ $SHARED_ENGINE_NAME = "SimulinkMCP"  # Must match!
 
 ### "Python not found"
 
-UV will install Python automatically. If it fails:
+The automated UV flow can install Python automatically. If UV is allowed and it fails:
 ```powershell
 # Install UV first
 powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
@@ -302,6 +302,10 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 # Run installer again
 .\install.ps1
 ```
+
+If UV is not allowed, install Python 3.10 or newer through your organization's
+approved software channel, then use the non-UV install path in
+[docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md).
 
 ### "VS Code doesn't see MCP server"
 
@@ -322,7 +326,7 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ## 📋 Installation Checklist
 
 - [ ] MATLAB installed (any version R2023a or newer)
-- [ ] UV package manager installed
+- [ ] UV package manager installed, or Python 3.10+ approved for the non-UV path
 - [ ] Project folder copied/cloned
 - [ ] Deleted `.venv/` folder (if copied from another machine)
 - [ ] Created `config.local.ps1` (if non-standard setup)

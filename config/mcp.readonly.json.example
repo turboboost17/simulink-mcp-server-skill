@@ -1,13 +1,14 @@
 {
-  "github.copilot.chat.mcpServers": {
-    "simulink-mcp-server": {
+  "servers": {
+    "simulinkMcpServerReadonly": {
+      "type": "stdio",
       "command": "<PATH_TO_PYTHON_EXE>",
       "args": ["-m", "simulink_mcp_server.mcp_server"],
       "cwd": "<ABSOLUTE_PATH_TO_simulink-mcp-server>",
       "env": {
         "MATLAB_PATH": "C:\\Program Files\\MATLAB\\R2025a",
         "SIMULINK_MCP_LOG_LEVEL": "WARNING",
-        "SIMULINK_MCP_MODE": "full"
+        "SIMULINK_MCP_MODE": "readonly"
       }
     }
   }

@@ -43,14 +43,26 @@ uv --version
 ### Step 2: Set Up Python Environment
 
 ```powershell
-# Navigate to project directory
-cd E:\Documents\MATLAB\MCP\simulink-mcp-server
+# Navigate to the cloned project directory
+cd <path-to>\simulink-mcp-server
 
 # Create virtual environment and install dependencies
 uv sync --no-prune
 ```
 
 This creates a `.venv` folder with Python 3.12 and installs all required packages from `pyproject.toml`.
+
+### Alternative: Install Without UV
+
+If UV is not approved in your environment, use standard Python tooling:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install .
+```
+
+For reviewed/offline environments, see [docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md).
 
 ### Step 3: Install MATLAB Engine for Python
 
@@ -70,8 +82,19 @@ This creates a `.venv` folder with Python 3.12 and installs all required package
 
 ```cmd
 cd "C:\Program Files\MATLAB\R2025a\extern\engines\python"
-E:\Documents\MATLAB\MCP\simulink-mcp-server\.venv\Scripts\python.exe setup.py install
+<repo>\.venv\Scripts\python.exe -m pip install .
 ```
+
+For newer MATLAB releases, the local MATLAB Engine source directory can often be
+installed with pip:
+
+```powershell
+cd "C:\Program Files\MATLAB\R2025a\extern\engines\python"
+<repo>\.venv\Scripts\python.exe -m pip install .
+```
+
+Use the MathWorks installation instructions for your MATLAB release if they
+differ.
 
 Verify the installation:
 
@@ -254,7 +277,7 @@ If you encounter issues:
 | Simulink | 25.1 | 10.2+ |
 | Python | 3.12.12 | 3.10 |
 | UV | 0.9.2 | 0.4.0 |
-| MCP SDK | 1.17.0 | 1.0.0 |
+| MCP SDK | 1.17.0 | 1.17.0 |
 
 ---
 

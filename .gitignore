@@ -1,6 +1,8 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+.mypy_cache/
+.pytest_cache/
 build/
 dist/
 wheels/
@@ -22,6 +24,17 @@ config.local.ps1
 *.slxc
 slprj/
 *.autosave
+
+# Saved local documentation exports. Do not redistribute MathWorks HTML assets.
+Simulink*.html
+Simulink*_files/
+*Functions.html
+*Functions_files/
+
+# Release and offline install artifacts
+wheelhouse/
+sbom*.json
+checksums*.txt
 
 # OS files
 .DS_Store
