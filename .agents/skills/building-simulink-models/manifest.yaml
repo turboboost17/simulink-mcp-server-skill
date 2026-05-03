@@ -1,0 +1,27 @@
+# manifest.yaml — Tooling metadata for building-simulink-models
+schema_version: 1
+license: MathWorks BSD-3-Clause
+scope: cross-product
+version: "1.1"
+matlab-release: ">=R2023a"
+requires-tools:
+  - simulink_add_block
+  - simulink_arrange_system
+  - simulink_connect_blocks
+  - simulink_create_subsystem
+  - simulink_delete_block
+  - simulink_find_blocks
+  - simulink_get_current_model
+  - simulink_get_param
+  - simulink_list_blocks
+  - simulink_set_param
+  - matlab_execute_code
+requires-skills: []
+reference-files:
+  - reference/stateflow.md
+  - reference/system-composer.md
+  - reference/simscape.md
+requires-products:
+  - Simulink
+toolkit: simulink-agentic-toolkit
+adapted-for: simulink-mcp-server

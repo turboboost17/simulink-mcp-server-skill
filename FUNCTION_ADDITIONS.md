@@ -6,6 +6,51 @@
 - **29 Simulink Functions** (13 original + 16 additions)
 - **8 MATLAB Functions** (NEW in v2.0)
 
+## Agent Skill Additions (2026-04-29)
+
+This repo now includes a portable `.agents/skills/` catalog adapted from the
+MathWorks Simulink Agentic Toolkit plaintext skills. These additions do not add
+new MCP tools or change the 43-tool server surface. They provide agent guidance
+for building, simulating, testing, specifying, and drafting requirements for
+Simulink workflows using this server's existing source-visible tools.
+
+Imported skills:
+
+- `building-simulink-models`
+- `generate-requirement-drafts`
+- `simulating-simulink-models`
+- `specifying-mbd-algorithms`
+- `specifying-plant-models`
+- `testing-simulink-models`
+
+## MATLAB Agent Skill Additions (2026-04-30)
+
+This repo also includes MATLAB Agentic Toolkit plaintext skills adapted to this
+server's local MCP tool names. These additions do not add new MCP tools or
+change the 43-tool server surface. They provide agent guidance for MATLAB code,
+tests, apps, Live Scripts, product inspection/installation, and Database Toolbox
+workflows that commonly sit alongside Simulink work.
+
+Imported skills:
+
+- `matlab-build-app`
+- `matlab-create-live-script`
+- `matlab-debugging`
+- `matlab-install-products`
+- `matlab-list-products`
+- `matlab-map-database-objects`
+- `matlab-modernize-code`
+- `matlab-read-database`
+- `matlab-review-code`
+- `matlab-testing`
+- `matlab-use-duckdb`
+- `matlab-write-database`
+
+The upstream MATLAB toolkit setup skill and eval fixtures are not included;
+this repository keeps its own MCP server setup and verification flow.
+
+
+
 ## 🆕 New in Version 2.0: MATLAB Code Execution (8 functions)
 
 These functions enable general MATLAB scripting and maintain a unified workspace with Simulink operations:

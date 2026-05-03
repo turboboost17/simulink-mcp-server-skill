@@ -40,6 +40,12 @@ tests whenever a tool is added or reclassified.
   operation that can block MATLAB for a long time.
 - For masked library blocks, read user-visible mask values from the outer masked
   subsystem unless you intentionally need implementation details.
+- MATLAB Engine startup can expose lifecycle bugs that unit tests miss: a
+  generated `MATLAB_<pid>` shared session may be a separate hidden MATLAB
+  process, and `shareEngine('SimulinkMCP')` can fail even when the newly started
+  engine is usable. Regression tests should mock named-engine connection
+  failures, preferred-name sharing failures, idempotent reconnects, and safe
+  disconnect behavior for externally managed engines.
 
 ## Coverage References
 

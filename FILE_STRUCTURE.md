@@ -4,6 +4,18 @@ This document explains what each file does and why it exists.
 
 ## 📁 Core Source Files
 
+### `.agents/`
+Portable agent customization assets.
+
+- **`skills/`**
+  - Adapted plaintext MATLAB, Simulink, and Model-Based Design skills for agent workflows.
+  - Uses the portable `.agents/skills/<skill-name>/SKILL.md` convention.
+  - Keeps execution mapped to this server's local MCP tools.
+
+See `docs/MATHWORKS_AGENTIC_TOOLKIT_REVIEW.md` and
+`docs/MATHWORKS_MATLAB_AGENTIC_TOOLKIT_REVIEW.md` for import and compatibility
+notes.
+
 ### `src/simulink_mcp_server/`
 Main server implementation directory.
 

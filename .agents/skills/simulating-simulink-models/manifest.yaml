@@ -1,0 +1,16 @@
+# manifest.yaml — Tooling metadata for simulating-simulink-models
+schema_version: 1
+license: MathWorks BSD-3-Clause
+scope: cross-product
+version: "1.1"
+matlab-release: ">=R2017a"
+requires-tools:
+  - simulink_run_simulation
+  - matlab_execute_code
+  - matlab_execute_async
+  - matlab_check_task
+requires-skills: []
+requires-products:
+  - Simulink
+toolkit: simulink-agentic-toolkit
+adapted-for: simulink-mcp-server

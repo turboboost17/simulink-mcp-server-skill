@@ -11,7 +11,7 @@
   "environment": {
     "MATLAB_PATH": "C:\\Program Files\\MATLAB\\R2025a",
     "SIMULINK_MCP_LOG_LEVEL": "WARNING",
-    "SIMULINK_MCP_MODE": "readonly"
+    "SIMULINK_MCP_MODE": "full"
   },
   "profiles": {
     "readonly": {

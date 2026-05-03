@@ -7,6 +7,36 @@ names. Do not commit saved MathWorks HTML pages or asset folders.
 Current implemented MCP tools: 43, as registered in
 `src/simulink_mcp_server/mcp_server.py`.
 
+## MathWorks Simulink Agentic Toolkit Comparison Gaps
+
+The MathWorks Simulink Agentic Toolkit describes several composite model tools.
+The adapted `.agents/skills` catalog maps their concepts onto current local
+tools where possible, and tracks source-visible replacements here.
+
+| Upstream Tool | Candidate Value | Suggested Mode |
+|---|---|---|
+| `model_overview` | High-level hierarchy/interface summary that composes current model context, block listing, and connection metadata into one agent-friendly response. | readonly |
+| `model_read` | Structured graph read with stable block IDs, topology, expressions, connections, and parameter summaries. | readonly |
+| `model_query_params` | Batch query for block, signal, and model configuration parameters, including optional compiled values. | readonly |
+| `model_resolve_params` | Resolve model/workspace/data-dictionary variable references used by block parameters. | readonly |
+| `model_edit` | Transactional multi-operation edit tool with add/connect/configure/delete/replace operations, partial-failure reporting, and layout handling. | full |
+| `model_test` | Source-visible model test runner for persistent pass/fail Simulink tests, preferably layered over MATLAB Unit Test and Simulink Test APIs. | full |
+
+## MathWorks MATLAB Agentic Toolkit Comparison Gaps
+
+The MathWorks MATLAB Agentic Toolkit maps closely to existing local MATLAB tools,
+but a few source-visible improvements would make the imported skills more
+efficient and structured.
+
+| Upstream Capability | Candidate Value | Suggested Mode |
+|---|---|---|
+| `matlab_coding_guidelines` resource | Local MCP resource or readonly tool that returns project coding guidance plus MATLAB review conventions. | readonly |
+| `plain_text_live_code_guidelines` resource | Local MCP resource or readonly tool for plain-text Live Script authoring rules. | readonly |
+| Structured `check_matlab_code` output | Return parsed `checkcode -struct` diagnostics with file, line, column, severity, and message fields instead of only command-window text. | readonly |
+| Structured `run_matlab_test_file` output | Return parsed `matlab.unittest` pass/fail/error counts and diagnostics from `runtests`. | full |
+| Structured `detect_matlab_toolboxes` output | Return MATLAB release and toolbox list as structured JSON rather than raw `ver` output. | readonly |
+| Installed product/support-package listing | Dedicated readonly tool for MATLAB installation product inventory, including support-package roots. | readonly |
+
 ## Unimplemented Programmatic Modeling Candidates
 
 | Function or API | Candidate Value | Suggested Mode |

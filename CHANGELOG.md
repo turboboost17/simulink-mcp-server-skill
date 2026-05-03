@@ -1,5 +1,27 @@
 # Changelog - Simulink MCP Server
 
+## Unreleased
+
+### Added
+
+- Portable `.agents/skills/` catalog adapted from MathWorks Simulink Agentic
+   Toolkit plaintext domain skills.
+- MATLAB Agentic Toolkit plaintext workflow skills for MATLAB testing,
+   debugging, review, modernization, app building, Live Scripts, product
+   inventory/installation, and Database Toolbox workflows.
+- Review notes documenting why MathWorks `.p` tools, the setup skill,
+   and the bug-report skill are not imported.
+- Tests that verify imported skill manifests only require local MCP tools and
+   that upstream eval fixtures are not imported.
+
+### Fixed
+
+- MATLAB engine startup now keeps a usable engine connection when assigning the
+   preferred shared engine name is rejected because the session is already
+   shared under another name.
+- Repeated engine connection attempts are idempotent and disconnect no longer
+   quits externally managed shared MATLAB sessions.
+
 ## Version 0.2.0 - Release Hardening
 
 ### Added

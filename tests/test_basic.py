@@ -4,6 +4,9 @@ These tests intentionally avoid requiring MATLAB to be running; they only
 validate that the Python surface area imports cleanly.
 """
 
+import sys
+import types
+
 
 def test_imports() -> None:
     from simulink_mcp_server.server import (
@@ -27,6 +30,93 @@ def test_engine_manager_initializes() -> None:
 
     available = manager.ensure_matlab_engine_installed()
     assert isinstance(available, bool)
+
+
+def test_engine_connect_is_idempotent(monkeypatch) -> None:
+    from simulink_mcp_server.server import MATLABEngineManager
+
+    manager = MATLABEngineManager()
+    manager.engine = object()
+    manager.is_connected = True
+
+    def fail_if_called() -> bool:
+        raise AssertionError("already-connected manager should not reconnect")
+
+    monkeypatch.setattr(manager, "ensure_matlab_engine_installed", fail_if_called)
+
+    assert manager.connect() is True
+
+
+def test_engine_connect_keeps_started_engine_when_share_name_fails(monkeypatch) -> None:
+    from simulink_mcp_server.server import MATLABEngineManager
+
+    class FakeEngineError(Exception):
+        pass
+
+    class FakeShareNamespace:
+        def shareEngine(self, engine_name: str, nargout: int = 0) -> None:
+            raise RuntimeError("current MATLAB session is shared already")
+
+    class FakeMatlabNamespace:
+        def __init__(self) -> None:
+            self.engine = FakeShareNamespace()
+
+    class FakeEngine:
+        def __init__(self) -> None:
+            self.matlab = FakeMatlabNamespace()
+
+        def evalc(self, code: str) -> str:
+            return ""
+
+    fake_engine = FakeEngine()
+    fake_matlab_module = types.ModuleType("matlab")
+    fake_engine_module = types.ModuleType("matlab.engine")
+    fake_engine_module.EngineError = FakeEngineError
+    fake_engine_module.TimeoutError = TimeoutError
+
+    def connect_matlab(engine_name: str) -> FakeEngine:
+        raise FakeEngineError(f"{engine_name} not found")
+
+    def start_matlab() -> FakeEngine:
+        return fake_engine
+
+    fake_engine_module.connect_matlab = connect_matlab
+    fake_engine_module.start_matlab = start_matlab
+    fake_matlab_module.engine = fake_engine_module
+
+    monkeypatch.setitem(sys.modules, "matlab", fake_matlab_module)
+    monkeypatch.setitem(sys.modules, "matlab.engine", fake_engine_module)
+
+    manager = MATLABEngineManager()
+    monkeypatch.setattr(manager, "ensure_matlab_engine_installed", lambda: True)
+
+    assert manager.connect() is True
+    assert manager.engine is fake_engine
+    assert manager.is_connected is True
+    assert manager._started_engine is True
+
+
+def test_disconnect_does_not_quit_external_shared_engine() -> None:
+    from simulink_mcp_server.server import MATLABEngineManager
+
+    class FakeSharedEngine:
+        def __init__(self) -> None:
+            self.quit_called = False
+
+        def quit(self) -> None:
+            self.quit_called = True
+
+    fake_engine = FakeSharedEngine()
+    manager = MATLABEngineManager()
+    manager.engine = fake_engine
+    manager.is_connected = True
+    manager._started_engine = False
+
+    manager.disconnect()
+
+    assert fake_engine.quit_called is False
+    assert manager.engine is None
+    assert manager.is_connected is False
 
 
 def test_function_availability() -> None:

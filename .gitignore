@@ -21,6 +21,7 @@ config.local.ps1
 
 # MATLAB temporary files
 *.asv
+*.p
 *.slxc
 slprj/
 *.autosave

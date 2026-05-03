@@ -27,6 +27,14 @@ A Model Context Protocol (MCP) server that provides VS Code agents with comprehe
 
 ## Features
 
+### Portable Agent Skills
+- Adapted `.agents/skills/` catalog for MATLAB, Simulink, and Model-Based
+   Design workflows: debugging, testing, code review, app building,
+   modernization, Live Scripts, database access, model building, simulation,
+   requirements drafting, algorithm specs, and plant model specs.
+- Skills are plain-text guidance and reference templates only; this repo keeps
+   MCP execution in its local source-visible server tools.
+
 ### 🆕 MATLAB Code Execution (NEW!)
 - **Execute Code**: Run arbitrary MATLAB code snippets
 - **Workspace Variables**: Get/set/list/clear workspace variables

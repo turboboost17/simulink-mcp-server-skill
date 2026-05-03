@@ -74,6 +74,7 @@ class MATLABEngineManager:
         )
         self.is_connected = False
         self.matlab_available = False
+        self._started_engine = False
         # Async task tracking
         self._active_future = None  # (task_id, future, code_snippet, start_time)
         self._future_lock = threading.Lock()
@@ -100,6 +101,9 @@ class MATLABEngineManager:
         This is intentionally synchronous — matlab.engine calls are blocking
         and this must be callable from both sync and async contexts.
         """
+        if self.is_connected and self.engine is not None:
+            return True
+
         if not self.ensure_matlab_engine_installed():
             logger.warning(
                 "MATLAB Engine not available, will use command-line fallback"
@@ -118,20 +122,31 @@ class MATLABEngineManager:
                 logger.info(
                     f"Connected to existing shared MATLAB engine: {self.shared_engine_name}"
                 )
+                self._started_engine = False
             except matlab.engine.EngineError as e:
                 logger.info(f"Shared engine '{self.shared_engine_name}' not found: {e}")
-                # Create new shared engine with your specific name
+                # Create a new engine. MATLAB sessions started by the Python
+                # engine may already be shared under a generated name, so
+                # failing to assign our preferred name is not fatal.
                 logger.info(
-                    f"Creating new shared MATLAB engine: {self.shared_engine_name}"
+                    f"Creating new MATLAB engine for: {self.shared_engine_name}"
                 )
                 self.engine = matlab.engine.start_matlab()
-                # Share the engine with your specific name
-                self.engine.matlab.engine.shareEngine(
-                    self.shared_engine_name, nargout=0
-                )
-                logger.info(
-                    f"Created and shared MATLAB engine: {self.shared_engine_name}"
-                )
+                self._started_engine = True
+                try:
+                    self.engine.matlab.engine.shareEngine(
+                        self.shared_engine_name, nargout=0
+                    )
+                    logger.info(
+                        f"Created and shared MATLAB engine: {self.shared_engine_name}"
+                    )
+                except Exception as share_error:
+                    logger.warning(
+                        "Started MATLAB engine but could not share it as %s; "
+                        "continuing with the connected engine: %s",
+                        self.shared_engine_name,
+                        share_error,
+                    )
 
             # Verify Simulink is available
             try:
@@ -153,13 +168,17 @@ class MATLABEngineManager:
         """Disconnect from MATLAB engine."""
         if self.engine and self.is_connected:
             try:
-                self.engine.quit()
-                logger.info("Disconnected from MATLAB engine")
+                if self._started_engine:
+                    self.engine.quit()
+                    logger.info("Stopped MATLAB engine started by MCP server")
+                else:
+                    logger.info("Released shared MATLAB engine reference")
             except Exception as e:
                 logger.error(f"Error disconnecting from MATLAB engine: {e}")
             finally:
                 self.engine = None
                 self.is_connected = False
+                self._started_engine = False
 
     def execute_matlab_code(
         self, code: str, capture_output: bool = True, timeout: Optional[int] = None

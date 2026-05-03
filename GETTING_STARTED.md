@@ -165,6 +165,26 @@ matlab.engine.find_matlab()
 % Should show 'SimulinkMCP' in the list
 ```
 
+### Problem: Duplicate or hidden MATLAB shared engines
+
+The MATLAB Engine API can report shared sessions such as `MATLAB_<pid>` in
+addition to `SimulinkMCP`. These extra sessions may be headless MATLAB processes
+started by VS Code, Python, or another agent, and they may not appear as visible
+MATLAB desktop windows.
+
+**Solution:**
+1. Check shared engine names from this workspace:
+   ```powershell
+   .\.venv\Scripts\python.exe -c "import matlab.engine; print(matlab.engine.find_matlab())"
+   ```
+2. If more than `SimulinkMCP` appears, check the process IDs before stopping
+   anything. Only stop the extra MATLAB process if you are sure it is not the
+   intended shared engine.
+3. Re-check that `SimulinkMCP` still responds:
+   ```powershell
+   .\.venv\Scripts\python.exe -c "import matlab.engine; eng=matlab.engine.connect_matlab('SimulinkMCP'); print(eng.eval('1+1', nargout=1))"
+   ```
+
 ### Problem: Copilot doesn't recognize MCP server
 
 **Solution:**

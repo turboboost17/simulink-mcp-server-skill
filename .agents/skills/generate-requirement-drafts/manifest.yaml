@@ -1,0 +1,19 @@
+# manifest.yaml — Tooling metadata for generate-requirement-drafts
+schema_version: 1
+license: MathWorks BSD-3-Clause
+scope: cross-product
+version: "2.1"
+matlab-release: ">=R2023a"
+requires-tools:
+  - simulink_find_blocks
+  - simulink_get_param
+  - simulink_list_blocks
+  - matlab_eval_expression
+  - matlab_execute_code
+requires-skills: []
+requires-products:
+  - Simulink
+  # Requirements Toolbox is optional — skill detects availability at runtime
+  # and falls back to structured YAML when not installed
+toolkit: simulink-agentic-toolkit
+adapted-for: simulink-mcp-server

@@ -28,6 +28,19 @@ that can run code, not like a read-only documentation service.
   according to the current user's permissions.
 - Model mutation: full mode can change and save Simulink models.
 
+## Agent Skill Imports
+
+This repo includes adapted plaintext skills from the MathWorks MATLAB and
+Simulink Agentic Toolkits under `.agents/skills/`. Upstream setup, plugin
+delivery, bug-reporting, eval-fixture, and nonlocal tool implementation files
+are not included. The imported skills are guidance only; execution behavior
+comes from the MCP tools an agent chooses to call.
+
+Do not add `.p` files or upstream tool implementation binaries to this
+repository to satisfy skill references. If an upstream composite tool is useful,
+implement a source-visible local replacement and cover it with tests and
+`SIMULINK_MCP_MODE` classification.
+
 ## Deployment Controls
 
 Use `SIMULINK_MCP_MODE` to reduce the exposed tool surface:
